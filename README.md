@@ -11,7 +11,9 @@ January 2024 is when I first entered a game jam and since then, I have done two 
 
 A little bit later, I began video documenting Skeletons Uprising. Throughout my work with Skeletons Uprising, I created many things from multiplayer replication to custom save states and deformations. Eventually I decided to put Skeletons Uprising on an indefinite hiatus and entered my current saga to go even further down the levels and begin making my own engine. I quickly found out that such a thing was impractical by itself so I started Necro Civ. Instead of creating an engine by itself, I decided to begin making games that use their own internal workings and move what works into an engine at a later point. Since the decision to make Necro Civ, I have built many systems from the ground up in C++. Everything from animation skinning to rendering to logistical paths have been loosely documented within my playlist.
 
-I have been slowly adding code samples that you can see within the theghost3907 repository if not there already.
+## Code Samples
+
+I have been slowly adding code samples that you can see within the theghost3907 repository if not there already. They consist of Necro Civ lower systems, like engine or shaders, opposed to gameplay or other things at the moment.
 <!--
 **theghost3907/theghost3907** is a ✨ _special_ ✨ repository because its `README.md` (this file) appears on your GitHub profile.
 
