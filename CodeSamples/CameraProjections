@@ -1,0 +1,27 @@
+/*
+  These are two basic camera projections sets for vulkan. Instead of all the camera matrixies as views being saved in the camera itself, these are being saved into an inline struct
+      to make it easier to pass to the shaders.
+*/
+
+	void NCEOCamera::SetProjectionOrthographic(float Left, float Right, float Top, float Bottom, float Near, float Far) {
+		CameraViews.ProjectionMatrix = glm::mat4{ 1.0f };
+		CameraViews.ProjectionMatrix[0][0] = 2.f / (Right - Left);
+		CameraViews.ProjectionMatrix[1][1] = 2.f / (Top - Bottom);
+		CameraViews.ProjectionMatrix[2][2] = 1.f / (Far - Near);
+		CameraViews.ProjectionMatrix[3][0] = -(Right + Left) / (Right - Left);
+		CameraViews.ProjectionMatrix[3][1] = -(Bottom + Top) / (Bottom - Top);
+		CameraViews.ProjectionMatrix[3][2] = -Near / (Far - Near);
+		CameraViews.InverseProjectionMatrix = glm::inverse(CameraViews.ProjectionMatrix);
+	}
+	
+	void NCEOCamera::SetProjectionPrespective(float VertFOV, float Aspect, float Near, float Far) {
+		assert(glm::abs(Aspect - std::numeric_limits<float>::epsilon()) > 0.0f);
+		const float HalfTanVert = tan(VertFOV/2.f);
+		CameraViews.ProjectionMatrix = glm::mat4{ 0.f };
+		CameraViews.ProjectionMatrix[0][0] = 1.f / (Aspect * HalfTanVert);
+		CameraViews.ProjectionMatrix[1][1] = 1.f / (HalfTanVert);
+		CameraViews.ProjectionMatrix[2][2] = Far / (Far - Near);
+		CameraViews.ProjectionMatrix[2][3] = 1.f;
+		CameraViews.ProjectionMatrix[3][2] = -(Far * Near) / (Far - Near);
+		CameraViews.InverseProjectionMatrix = glm::inverse(CameraViews.ProjectionMatrix);
+	}
