@@ -1,0 +1,61 @@
+/*
+  This is part of a shader that retrives the Tile "Hexagon" possition and rotates it to help break up that texture placed on it.
+  Something like this wouldnt work all the time but my current textures, for this example, are just simple noise color textures made in blender.
+*/
+
+
+float Random(vec2 Input){
+	return fract(sin(dot(Input.xy, vec2(20.9, 31.2)))*4000); 
+}
+
+vec2 RotateUV(vec2 UV, float Angle, vec2 Orgin){
+	UV -= Orgin;
+	float Sin = sin(Angle);
+	float Cos = cos(Angle);
+	UV = vec2(UV.x * Cos - UV.y * Sin, UV.x * Sin + UV.y * Cos);
+	UV += Orgin;
+	return UV;
+}
+
+void main(){
+	vec3 AmbientLightColor = GUB.AmbientLightColor.xyz * GUB.AmbientLightColor.w;
+	vec3 TotalDiffuseColor = vec3(0);
+
+	for(int i =0; i<GUB.LightCount;i++){
+
+	vec3 DirectionToLight = GUB.LightPosition[i].xyz - InPositionInWorld.xyz;
+	float Attenuation = 1.0 / dot(DirectionToLight, DirectionToLight);
+	vec3 LightColorPart = GUB.LightColor[i].xyz * GUB.LightColor[i].w * Attenuation;
+
+	float DotLight = max(dot(normalize(InNormalInWorld), normalize(DirectionToLight)),0);
+
+	TotalDiffuseColor += LightColorPart * DotLight;
+	}
+
+	vec2 UVSize = vec2(.5,.5); // my texture is a atlas with 4 biomes, the uv takes the entire atlas so it needs to be halfed then moved.
+	vec2 UVOffset;
+	
+	if (InBiomeIdentity == 0){
+		UVOffset = vec2 (.5,.0);
+	}
+	else if (InBiomeIdentity == 1){
+		UVOffset = vec2 (.0,.5);
+	}
+	else if (InBiomeIdentity == 2){
+		UVOffset = vec2 (.0,.0);
+	}
+	else{
+		UVOffset = vec2 (.5,.5);
+	}
+	
+	vec2 Seed = floor(InPositionInWorld.xz);
+	float RotAngle = Random(Seed) * 0.2;
+
+	vec2 UVResult = RotateUV(InUV, RotAngle, vec2(.5,.5));
+
+	vec3 ImageColor = texture(InImage, UVResult*UVSize+UVOffset).rgb;
+
+	OutColor = vec4(((TotalDiffuseColor + AmbientLightColor) * ImageColor), 1.0);
+}
+
+
