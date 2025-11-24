@@ -1,0 +1,33 @@
+
+/*
+  This is a function to decode Pulse data from Ogg wrapped Opus files for miniaudio to play, while still allowing me to have Opus deoceder controll with my opus lib differnt from
+      miniaudio's opus decoder. I have audio that is converted to Opus using FFMPG, and FFMPG wraps Opus with an Ogg container.
+      
+*/
+
+		std::vector<int16_t> DecodeOggOpusFile(const std::string& FilePath) {
+			int Error;
+			
+			OggOpusFile* OpusFile = op_open_file(FilePath.c_str(), &Error);
+			if (!OpusFile) {
+				throw std::runtime_error("Fail to open ogg opus file :::   " + FilePath);
+			}
+			
+			std::vector<int16_t> PCMData;
+			const int BufferSize = 4096;
+			int16_t Buffer[BufferSize];
+			int ReadSamps;
+			
+			do { // op_read returns 0 for file end. loop would never activate for a while loop (technecally a while(true) with a with some breaks would work, but this is a little shorter)
+				ReadSamps = op_read(OpusFile, Buffer, BufferSize, nullptr);
+				if (ReadSamps < 0) {
+					op_free(OpusFile);
+					throw std::runtime_error("Fail to Read ogg opus file");
+				}
+				PCMData.insert(PCMData.end(), Buffer, Buffer + ReadSamps);
+			} while (ReadSamps > 0);
+			
+			op_free(OpusFile);
+			return PCMData;
+
+		}
