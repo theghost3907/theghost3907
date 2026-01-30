@@ -1,0 +1,662 @@
+/*
+  Here are some peices of a video decodeing Im currently working on(As of Jan/30/26) and formatting
+*/
+
+/*
+  I was having trouble with YCbCr image formats, so this copies the decoded combined image into two(the current used format is only 4:2:0 two plane) other images
+*/
+void NCRM2DMethod::CopyDecodeForRendering(FrameData2& FrameInfo, VkImage& DecodedImage, int& IndexSignledOn ) {
+	if (!VideoPlanes[IndexSignledOn] || !VideoRenderSets[IndexSignledOn]) {
+		NCDEBUG::LogLine("2D - CopyDecodeForRendering Called But no/notAll Required Prerequisites Met for Index : " + std::to_string(IndexSignledOn),2);
+		return;
+	}
+
+	uint32_t CurrentIndex = VideoSystems[IndexSignledOn].GetIndex();
+
+	NCDEBUG::LogLine("2D - Creating Video Command Buffer");
+
+	VkCommandBuffer VideoCommandBuffer = NecCivDevice.BeginSTC(true);
+
+	VkImageMemoryBarrier2 TransferBarrier = {};
+	TransferBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	TransferBarrier.srcStageMask = VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR;
+	TransferBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	TransferBarrier.srcAccessMask = VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR;
+	TransferBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+	TransferBarrier.oldLayout = VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR;
+	TransferBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	TransferBarrier.image = DecodedImage;
+	TransferBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 };
+
+	VkDependencyInfo TransferBarrierDepInfo = {};
+	TransferBarrierDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	TransferBarrierDepInfo.imageMemoryBarrierCount = 1;
+	TransferBarrierDepInfo.pImageMemoryBarriers = &TransferBarrier;
+
+	NCDEBUG::LogLine("2D - Submitting Barriers For Decode Image : Decode -> Transfer Bit");
+
+	vkCmdPipelineBarrier2(VideoCommandBuffer, &TransferBarrierDepInfo);
+
+	NCDEBUG::LogLine("2D - Ending Video Command Buffer");
+
+	NecCivDevice.EndSTC(VideoCommandBuffer, true);
+
+
+
+	NCDEBUG::LogLine("2D - Creating Graphics Command Buffer");
+
+	VkCommandBuffer GraphicsCommandBuffer = NecCivDevice.BeginSTC();
+
+
+	if (CopyImagesLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL) {
+		std::vector<VkImageMemoryBarrier2> PreCopyBarriers;
+
+		VkImageMemoryBarrier2 YPreCopyBarrier = {};
+		YPreCopyBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+		YPreCopyBarrier.srcStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+		YPreCopyBarrier.dstStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+		YPreCopyBarrier.srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+		YPreCopyBarrier.dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+		YPreCopyBarrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+		YPreCopyBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+		YPreCopyBarrier.image = YCopyImage;
+		YPreCopyBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 };
+		PreCopyBarriers.push_back(YPreCopyBarrier);
+
+		VkImageMemoryBarrier2 CbCrPreCopyBarrier = YPreCopyBarrier;
+		CbCrPreCopyBarrier.image = CbCrCopyImage;
+		PreCopyBarriers.push_back(CbCrPreCopyBarrier);
+
+		VkDependencyInfo PreCopyDepInfo = {};
+		PreCopyDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+		PreCopyDepInfo.imageMemoryBarrierCount = 2;
+		PreCopyDepInfo.pImageMemoryBarriers = PreCopyBarriers.data();
+
+		NCDEBUG::LogLine("2D - Submitting Barriers For Copy Images : Shader -> Transfer");
+
+		vkCmdPipelineBarrier2(GraphicsCommandBuffer, &PreCopyDepInfo);
+
+		CopyImagesLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	}
+
+	VkImageCopy Copy = {};
+	Copy.srcSubresource = { VK_IMAGE_ASPECT_PLANE_0_BIT,0,0,1 };
+	Copy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT,0,0,1 };
+	Copy.extent = { 1920,1080,1 };
+
+	VkImageCopy CbCrCopy = {};
+	CbCrCopy.srcSubresource = { VK_IMAGE_ASPECT_PLANE_1_BIT,0,0,1 };
+	CbCrCopy.dstSubresource = { VK_IMAGE_ASPECT_COLOR_BIT,0,0,1 };
+	CbCrCopy.extent = { 960,540,1 };
+
+	NCDEBUG::LogLine("2D - Coping Images");
+
+	vkCmdCopyImage(GraphicsCommandBuffer, DecodedImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, YCopyImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &Copy);
+	vkCmdCopyImage(GraphicsCommandBuffer, DecodedImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, CbCrCopyImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &CbCrCopy);
+
+	std::vector<VkImageMemoryBarrier2> PostCopyBarriers;
+
+	VkImageMemoryBarrier2 YPostCopyBarrier = {};
+	YPostCopyBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	YPostCopyBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	YPostCopyBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+	YPostCopyBarrier.srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+	YPostCopyBarrier.dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
+	YPostCopyBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+	YPostCopyBarrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	YPostCopyBarrier.image = YCopyImage;
+	YPostCopyBarrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 };
+	PostCopyBarriers.push_back(YPostCopyBarrier);
+
+	VkImageMemoryBarrier2 CbCrPostCopyBarrier = YPostCopyBarrier;
+	CbCrPostCopyBarrier.image = CbCrCopyImage;
+	PostCopyBarriers.push_back(CbCrPostCopyBarrier);
+
+	VkDependencyInfo PostCopyDepInfo = {};
+	PostCopyDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	PostCopyDepInfo.imageMemoryBarrierCount = 2;
+	PostCopyDepInfo.pImageMemoryBarriers = PostCopyBarriers.data();
+
+	NCDEBUG::LogLine("2D - Submitting Barriers For Copy Images : Transfer -> Fragment Shader");
+
+	vkCmdPipelineBarrier2(GraphicsCommandBuffer, &PostCopyDepInfo);
+
+	CopyImagesLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+
+	NCDEBUG::LogLine("2D - Ending Graphics Command Buffer");
+
+	NecCivDevice.EndSTC(GraphicsCommandBuffer);
+
+	NCDEBUG::LogLine("2D - Creating Video Command Buffer");
+
+	VkCommandBuffer VideoCommandBuffer2 = NecCivDevice.BeginSTC(true);
+
+	std::vector<VkImageMemoryBarrier2> PostCompBarries;
+
+	VkImageMemoryBarrier2 PostTransferParrier = {};
+	PostTransferParrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2;
+	PostTransferParrier.dstStageMask = VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR;
+	PostTransferParrier.srcStageMask = VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+	PostTransferParrier.dstAccessMask = VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR;
+	PostTransferParrier.srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+	PostTransferParrier.newLayout = VK_IMAGE_LAYOUT_VIDEO_DECODE_DST_KHR;
+	PostTransferParrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+	PostTransferParrier.image = DecodedImage;
+	PostTransferParrier.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT,0,1,0,1 };
+
+	VkDependencyInfo PostDepInfo = {};
+	PostDepInfo.sType = VK_STRUCTURE_TYPE_DEPENDENCY_INFO;
+	PostDepInfo.imageMemoryBarrierCount = 1;
+	PostDepInfo.pImageMemoryBarriers = &PostTransferParrier;
+
+	NCDEBUG::LogLine("2D - Submitting Barriers For Decode Image : Transfer -> Decode");
+
+	vkCmdPipelineBarrier2(VideoCommandBuffer2, &PostDepInfo);
+
+	NCDEBUG::LogLine("2D - Ending Video Command Buffer 2");
+
+	NecCivDevice.EndSTC(VideoCommandBuffer2, true);
+
+}
+
+	bool NCRM2DMethod::VideoSystem::ParseSliceHeader(const std::vector<uint8_t>& InData, BitReadingH264::SliceHeaderInfo& HeaderInfo) {
+
+		uint8_t NalType = InData[0] & 0x1F;
+		HeaderInfo.NalType = NalType;
+
+		int BitPosition = 0;
+
+		std::vector<uint8_t> NonEmuData = RemoveEmulationBytes(InData.data(), InData.size());
+
+
+		const uint8_t* Data = NonEmuData.data() + 1;
+		const uint8_t* End = Data + NonEmuData.size() - 1;
+
+		uint32_t FirstMBInSlice = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+
+		uint32_t RawSLiceType = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+		HeaderInfo.SliceType = RawSLiceType % 5;
+
+		HeaderInfo.PicId = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+
+		auto FoundPic = PictureMap.find(HeaderInfo.PicId);
+		if (FoundPic == PictureMap.end()) {
+			std::cout << "No Picture found for ID   " << HeaderInfo.PicId << std::endl;
+			return  false;
+		}
+
+		auto FoundSeq = SequenceMap.find(FoundPic->second.seq_parameter_set_id);
+		if (FoundSeq == SequenceMap.end()) {
+			std::cout << "No Sequence found for ID   " << FoundPic->second.seq_parameter_set_id << std::endl;
+			return  false;
+		}
+
+		uint32_t FrameNumBits = FoundSeq->second.log2_max_frame_num_minus4 + 4;
+
+		HeaderInfo.FrameNum = BitReadingH264::ReadNumBits(FrameNumBits, Data, BitPosition, End);
+
+		bool FeildPicFlag = false;
+		if (!FoundSeq->second.flags.frame_mbs_only_flag) {
+			FeildPicFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (FeildPicFlag) {
+				HeaderInfo.BottomFieldFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End) != 0;
+			}
+		}
+
+		if (HeaderInfo.NalType == 5) {
+			HeaderInfo.IdrPicId = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+		}
+
+		if (FoundSeq->second.pic_order_cnt_type == 0) {
+			uint32_t PicOrdCountLsbBits = FoundSeq->second.log2_max_pic_order_cnt_lsb_minus4 + 4;
+			uint32_t PicORderCntLsb = BitReadingH264::ReadNumBits(PicOrdCountLsbBits, Data, BitPosition, End);
+			HeaderInfo.PicOrdCount[0] = PicORderCntLsb;
+			HeaderInfo.PicOrdCount[1] = PicORderCntLsb;
+
+			if (!FeildPicFlag && FoundPic->second.flags.bottom_field_pic_order_in_frame_present_flag) {
+				int32_t DeltaPicOrdCountBottom = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+				HeaderInfo.PicOrdCount[1] = HeaderInfo.PicOrdCount[0] + DeltaPicOrdCountBottom;
+			}
+		}
+		else if (FoundSeq->second.pic_order_cnt_type == 1) {
+			int32_t DeltaPicOrdCount[2] = { 0,0 };
+			DeltaPicOrdCount[0] = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+			if (FeildPicFlag && FoundPic->second.flags.bottom_field_pic_order_in_frame_present_flag) {
+				DeltaPicOrdCount[1] = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+			}
+			HeaderInfo.PicOrdCount[0] = DeltaPicOrdCount[0];
+			HeaderInfo.PicOrdCount[1] = DeltaPicOrdCount[1];
+		}
+
+		HeaderInfo.IsIntra = (HeaderInfo.SliceType == 2 || HeaderInfo.SliceType == 7);
+
+		return true;
+
+	}
+
+/*
+  This parses Sequence data that you would find in a .h264 file, This(and the ApplyData) originally didnt have the SequenceDataStruct but after struggling with it for a while I figgured i needed a struct to format it better.
+      The struct to hold the Sequence data is based off of the Wicked Engine struct that formats data from soonest to latest read data.
+*/
+	bool NCRM2DMethod::VideoSystem::ParseSeq(const std::vector<uint8_t>& InData, StdVideoH264SequenceParameterSet& SequenceSet) {
+		NCDEBUG::LogLine("2D - VideoSystem - Nal Parsing as Sequence");
+		if (InData.size() < 2) {
+			NCDEBUG::LogLine("2D - VideoSystem - Nal Not Processed As Sequence, too little data");
+			return false;
+		}
+
+		int BitPosition = 0;
+
+		std::vector<uint8_t> NonEmuData = RemoveEmulationBytes(InData.data(), InData.size());
+
+		if (NonEmuData.size() < 2) {
+			return false;
+		}
+
+		const uint8_t* Data = NonEmuData.data() + 1;
+		const uint8_t* End = Data + NonEmuData.size();
+
+		BitReadingH264::SequenceDataStruct SequenceData = {};
+
+		SequenceData.ProfileIDC = BitReadingH264::ReadNumBits(8, Data, BitPosition, End);
+		SequenceData.ConstraintSetFlags[0] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.ConstraintSetFlags[1] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.ConstraintSetFlags[2] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.ConstraintSetFlags[3] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.ConstraintSetFlags[4] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.ConstraintSetFlags[5] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.ConstraintSetFlags[6] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.ConstraintSetFlags[7] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.LevelIDC = BitReadingH264::ReadNumBits(8, Data, BitPosition, End);
+		SequenceData.SeqParamSetID = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+
+		if (SequenceData.ProfileIDC == 100 || SequenceData.ProfileIDC == 110 || SequenceData.ProfileIDC == 122 ||
+			SequenceData.ProfileIDC == 244 || SequenceData.ProfileIDC == 44 || SequenceData.ProfileIDC == 83 ||
+			SequenceData.ProfileIDC == 86 || SequenceData.ProfileIDC == 118 || SequenceData.ProfileIDC == 128 ||
+			SequenceData.ProfileIDC == 138 || SequenceData.ProfileIDC == 139 || SequenceData.ProfileIDC == 134) {
+
+			SequenceData.ChromaFormatIDC = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+			if (SequenceData.ChromaFormatIDC == 3) {
+				SequenceData.SeperateColorPlaneFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			}
+
+			SequenceData.BitDepthLumaMin8 = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+			SequenceData.BitDepthChromaMin8 = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+			SequenceData.QuantParamPrimeZeroTransYBypassflag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+
+			SequenceData.SeqScalingPresentFlags[0] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (SequenceData.SeqScalingPresentFlags[0]) {
+				for (int Flag = 0; Flag < 8; Flag++) {
+					SequenceData.SeqScalingPresentFlags[Flag + 1] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+				}
+				for (int List = 0; List < 6; List++) {
+					if (SequenceData.SeqScalingPresentFlags[List + 1]) {
+
+						int LastScale = 8;
+						int NextScale = 8;
+
+						for (int Index = 0; Index < 16; Index++) {
+							//SequenceData.Scaling4x4PlaneList[List][Index] = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+							if (NextScale != 0) {
+								int DeltaScale = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+								NextScale = (LastScale + DeltaScale + 256) & 0xff;
+							}
+							SequenceData.Scaling4x4PlaneList[List][Index] = (NextScale == 0) ? LastScale : NextScale;
+							LastScale = SequenceData.Scaling4x4PlaneList[List][Index];
+						}
+					}
+				}
+				for (int List = 0; List < 2; List++) {
+					if (SequenceData.SeqScalingPresentFlags[List + 7]) {
+
+						int LastScale = 8;
+						int NextScale = 8;
+
+						for (int Index = 0; Index < 64; Index++) {
+							if (NextScale != 0) {
+								int DeltaScale = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+								NextScale = (LastScale + DeltaScale + 256) & 0xff;
+							}
+							SequenceData.Scaling8x8PlaneList[List][Index] = (NextScale == 0) ? LastScale : NextScale;
+							LastScale = SequenceData.Scaling8x8PlaneList[List][Index];
+						}
+					}
+				}
+			}
+		}
+
+		SequenceData.Log2MaxFrameNumMin4 = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+		SequenceData.PicOrderCountType = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+
+		if (SequenceData.PicOrderCountType == 0) {
+			SequenceData.Log2MaxPicOrdCountLsbMin4 = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+		}
+		else if (SequenceData.PicOrderCountType == 1) {
+			SequenceData.DeltaPicOrdAlwaysZeroFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			SequenceData.OffsetNonRefPic = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+			SequenceData.OffsetTopBottomField = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+			SequenceData.NumRefFramesInPicOrdCountCycle = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+
+			for (int Frame = 0; Frame < SequenceData.NumRefFramesInPicOrdCountCycle; Frame++) {
+				SequenceData.OffsetRefFrame[Frame] = BitReadingH264::ReadExGolomb(Data, BitPosition, End);
+			}
+		}
+
+		SequenceData.MaxNumRefFrames = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+		SequenceData.GapsInFrameNumAllowedFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.PicWidthInMbsMin1 = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+		SequenceData.PicHeightInMapMin1 = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+		SequenceData.FrameMbsOnlyFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+
+		if (!SequenceData.FrameMbsOnlyFlag) {
+			SequenceData.FrameMbsOnlyFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		}
+		
+		SequenceData.Direct8x8InferenceFlat = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		SequenceData.FrameCroppingFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+
+		if (SequenceData.FrameCroppingFlag) {
+			SequenceData.FrameCropOffsets[0] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+			SequenceData.FrameCropOffsets[1] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+			SequenceData.FrameCropOffsets[2] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+			SequenceData.FrameCropOffsets[3] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+		}
+
+		SequenceData.VuiParamsPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+		if (SequenceData.VuiParamsPresentFlag) {
+
+			SequenceData.VuiParameters.AspectRatioInfoPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (SequenceData.VuiParameters.AspectRatioInfoPresentFlag) {
+				SequenceData.VuiParameters.AspectRatioIDC = BitReadingH264::ReadNumBits(8, Data, BitPosition, End);
+				if (SequenceData.VuiParameters.AspectRatioIDC == 255) {
+					SequenceData.VuiParameters.SarDementions[0] = BitReadingH264::ReadNumBits(16, Data, BitPosition, End);
+					SequenceData.VuiParameters.SarDementions[1] = BitReadingH264::ReadNumBits(16, Data, BitPosition, End);
+				}
+			}
+
+			SequenceData.VuiParameters.OverscanInfoPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (SequenceData.VuiParameters.OverscanInfoPresentFlag) {
+				SequenceData.VuiParameters.OverscanAppropriateFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			}
+
+			SequenceData.VuiParameters.VideoSignalTypePresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (SequenceData.VuiParameters.VideoSignalTypePresentFlag) {
+				SequenceData.VuiParameters.VideoFormat = BitReadingH264::ReadNumBits(3, Data, BitPosition, End);
+				SequenceData.VuiParameters.VideoFullRangeFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+				SequenceData.VuiParameters.ColorDescriptionPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+
+				if (SequenceData.VuiParameters.ColorDescriptionPresentFlag) {
+					SequenceData.VuiParameters.ColorPrimariers = BitReadingH264::ReadNumBits(8, Data, BitPosition, End);
+					SequenceData.VuiParameters.TransferCharacteristics = BitReadingH264::ReadNumBits(8, Data, BitPosition, End);
+					SequenceData.VuiParameters.MatrixCoefficiesnt = BitReadingH264::ReadNumBits(8, Data, BitPosition, End);
+				}
+			}
+
+			SequenceData.VuiParameters.ChromaLocInfoPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (SequenceData.VuiParameters.ChromaLocInfoPresentFlag) {
+				SequenceData.VuiParameters.ChromaSampleLotTypeFields[0] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+				SequenceData.VuiParameters.ChromaSampleLotTypeFields[1] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+			}
+			
+			SequenceData.VuiParameters.TimingInfoPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (SequenceData.VuiParameters.TimingInfoPresentFlag) {
+				SequenceData.VuiParameters.NumUnitsInTick = BitReadingH264::ReadNumBits(32, Data, BitPosition, End);
+				SequenceData.VuiParameters.TimeScale = BitReadingH264::ReadNumBits(32, Data, BitPosition, End);
+				SequenceData.VuiParameters.FixedFrameRateFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			}
+
+			SequenceData.VuiParameters.NalHrdParamPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (SequenceData.VuiParameters.NalHrdParamPresentFlag || SequenceData.VuiParameters.VclHrdParamPresentFlag) {
+				SequenceData.HrdParametersNAL.CpbCountMin2 = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+				SequenceData.HrdParametersNAL.BitRateScale = BitReadingH264::ReadNumBits(4, Data, BitPosition, End);
+				SequenceData.HrdParametersNAL.CpbSizeScale = BitReadingH264::ReadNumBits(4, Data, BitPosition, End);
+
+				for (int Index = 0; Index <= SequenceData.HrdParametersNAL.CpbCountMin2; Index++) {
+					SequenceData.HrdParametersNAL.BitRateValueMin1[Index] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+					SequenceData.HrdParametersNAL.CpbSizeValueMin1[Index] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+					SequenceData.HrdParametersNAL.CbrFlag[Index] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+				}
+
+				SequenceData.HrdParametersNAL.InitalCpbRemovalDelayLengthMin1 = BitReadingH264::ReadNumBits(5, Data, BitPosition, End);
+				SequenceData.HrdParametersNAL.CpbRemovalDelayLengthMin1 = BitReadingH264::ReadNumBits(5, Data, BitPosition, End);
+				SequenceData.HrdParametersNAL.DpbOutputDelayLengthMin1 = BitReadingH264::ReadNumBits(5, Data, BitPosition, End);
+				SequenceData.HrdParametersNAL.TimeOffsetLength = BitReadingH264::ReadNumBits(5, Data, BitPosition, End);
+			}
+
+			SequenceData.VuiParameters.VclHrdParamPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			if (SequenceData.VuiParameters.NalHrdParamPresentFlag && !SequenceData.VuiParameters.VclHrdParamPresentFlag) {
+				SequenceData.HrdParametersVCL.CpbCountMin2 = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+				SequenceData.HrdParametersVCL.BitRateScale = BitReadingH264::ReadNumBits(4, Data, BitPosition, End);
+				SequenceData.HrdParametersVCL.CpbSizeScale = BitReadingH264::ReadNumBits(4, Data, BitPosition, End);
+
+				for (int Index = 0; Index <= SequenceData.HrdParametersVCL.CpbCountMin2; Index++) {
+					SequenceData.HrdParametersVCL.BitRateValueMin1[Index] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+					SequenceData.HrdParametersVCL.CpbSizeValueMin1[Index] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+					SequenceData.HrdParametersVCL.CbrFlag[Index] = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+				}
+
+				SequenceData.HrdParametersVCL.InitalCpbRemovalDelayLengthMin1 = BitReadingH264::ReadNumBits(5, Data, BitPosition, End);
+				SequenceData.HrdParametersVCL.CpbRemovalDelayLengthMin1 = BitReadingH264::ReadNumBits(5, Data, BitPosition, End);
+				SequenceData.HrdParametersVCL.DpbOutputDelayLengthMin1 = BitReadingH264::ReadNumBits(5, Data, BitPosition, End);
+				SequenceData.HrdParametersVCL.TimeOffsetLength = BitReadingH264::ReadNumBits(5, Data, BitPosition, End);
+			}
+
+			if (SequenceData.VuiParameters.NalHrdParamPresentFlag || SequenceData.VuiParameters.VclHrdParamPresentFlag) {
+				SequenceData.VuiParameters.LowDelayHrdFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			}
+
+			SequenceData.VuiParameters.PicStructPresentFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+			SequenceData.VuiParameters.BitstreamRestrictionFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+
+			if (SequenceData.VuiParameters.BitstreamRestrictionFlag) {
+				SequenceData.VuiParameters.MotionVectorsOverPicFlag = BitReadingH264::ReadSingleBit(Data, BitPosition, End);
+				SequenceData.VuiParameters.MaxBytesPerPicDenom = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+				SequenceData.VuiParameters.MaxBitsPerMbDenom = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+				SequenceData.VuiParameters.Log2MaxMvLengths[0] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+				SequenceData.VuiParameters.Log2MaxMvLengths[1] = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+				SequenceData.VuiParameters.NumReorderFrames = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+				SequenceData.VuiParameters.MaxDecFrameBuffering = BitReadingH264::ReadExGolombUnsigned(Data, BitPosition, End);
+			}
+		}
+
+		return ApplySequenceData(SequenceData,SequenceSet);
+	}
+
+	bool NCRM2DMethod::VideoSystem::ApplySequenceData(BitReadingH264::SequenceDataStruct& SequenceData, StdVideoH264SequenceParameterSet& SequenceSet) {
+		StdVideoH264ScalingLists* ScaleListPtr = nullptr;
+		StdVideoH264SequenceParameterSetVui* VuiPtr = nullptr;
+		StdVideoH264HrdParameters* HrdPtr = nullptr;
+		int32_t* OffsetForRefFramePtr = nullptr;
+
+		if (SequenceData.SeqScalingPresentFlags[0]) {
+			ScaleListPtr = new StdVideoH264ScalingLists();
+			memset(&ScaleListPtr, 0, sizeof(StdVideoH264ScalingLists));
+
+			uint16_t ScalListPresentMask = 0;
+			uint16_t UseDefScaleMatrixMask = 0;
+
+			for (int List = 0; List < 6; List++) {
+				if (SequenceData.SeqScalingPresentFlags[List + 1]) {
+					ScalListPresentMask |= (1 << List);
+					if (SequenceData.UseDefault4x4ScalingMatrixFlag[List]) {
+						UseDefScaleMatrixMask != (1 << List);
+
+						for (int Index = 0; Index < 16; Index++) {
+							ScaleListPtr->ScalingList4x4[List][Index] = 16;
+						}
+					}
+					else {
+						for (int Index = 0; Index < 16; Index++) {
+							ScaleListPtr->ScalingList4x4[List][Index] = SequenceData.Scaling4x4PlaneList[List][Index];
+						}
+					}
+				}
+			}
+			for (int List = 0; List < 2; List++) {
+				if (SequenceData.SeqScalingPresentFlags[List + 7]) {
+					ScalListPresentMask |= (1 << (List + 6));
+					if (SequenceData.UseDefault8x8ScalingMatrixFlag[List]) {
+						UseDefScaleMatrixMask != (1 << (List + 6));
+						for (int Index = 0; Index < 64; Index++) {
+							ScaleListPtr->ScalingList8x8[List][Index] = 16;
+						}
+					}
+					else {
+						for (int Index = 0; Index < 64; Index++) {
+							ScaleListPtr->ScalingList8x8[List][Index] = SequenceData.Scaling4x4PlaneList[List][Index];
+						}
+					}
+				}
+			}
+
+			ScaleListPtr->scaling_list_present_mask = ScalListPresentMask;
+			ScaleListPtr->use_default_scaling_matrix_mask = UseDefScaleMatrixMask;
+		}
+		if (SequenceData.VuiParamsPresentFlag) {
+			VuiPtr = new StdVideoH264SequenceParameterSetVui();
+			memset(VuiPtr, 0, sizeof(StdVideoH264SequenceParameterSetVui));
+
+			VuiPtr->aspect_ratio_idc = static_cast<StdVideoH264AspectRatioIdc>(SequenceData.VuiParameters.AspectRatioIDC);
+
+			VuiPtr->flags.aspect_ratio_info_present_flag = SequenceData.VuiParameters.AspectRatioInfoPresentFlag;
+			VuiPtr->flags.bitstream_restriction_flag = SequenceData.VuiParameters.BitstreamRestrictionFlag;
+			VuiPtr->flags.chroma_loc_info_present_flag = SequenceData.VuiParameters.ChromaLocInfoPresentFlag;
+			VuiPtr->flags.nal_hrd_parameters_present_flag = SequenceData.VuiParameters.NalHrdParamPresentFlag;
+			VuiPtr->flags.overscan_info_present_flag = SequenceData.VuiParameters.OverscanInfoPresentFlag;
+			VuiPtr->flags.timing_info_present_flag = SequenceData.VuiParameters.TimingInfoPresentFlag;
+			VuiPtr->flags.vcl_hrd_parameters_present_flag = SequenceData.VuiParameters.VclHrdParamPresentFlag;
+			VuiPtr->flags.video_signal_type_present_flag = SequenceData.VuiParameters.VideoSignalTypePresentFlag;
+
+			if (SequenceData.VuiParameters.AspectRatioIDC == 255) {
+				VuiPtr->sar_width = SequenceData.VuiParameters.SarDementions[0];
+				VuiPtr->sar_height = SequenceData.VuiParameters.SarDementions[1];
+			}
+			if (VuiPtr->flags.bitstream_restriction_flag) {
+				VuiPtr->max_num_reorder_frames = SequenceData.VuiParameters.NumReorderFrames;
+				VuiPtr->max_dec_frame_buffering = SequenceData.VuiParameters.MaxDecFrameBuffering;
+			}
+			if (VuiPtr->flags.chroma_loc_info_present_flag) {
+				VuiPtr->chroma_sample_loc_type_top_field = SequenceData.VuiParameters.ChromaSampleLotTypeFields[0];
+				VuiPtr->chroma_sample_loc_type_bottom_field = SequenceData.VuiParameters.ChromaSampleLotTypeFields[1];
+			}
+			if (VuiPtr->flags.nal_hrd_parameters_present_flag || VuiPtr->flags.vcl_hrd_parameters_present_flag) {
+				HrdPtr = new StdVideoH264HrdParameters();
+				memset(HrdPtr, 0, sizeof(StdVideoH264HrdParameters));
+
+				if (SequenceData.VuiParameters.NalHrdParamPresentFlag) {
+					HrdPtr->bit_rate_scale = SequenceData.HrdParametersNAL.BitRateScale;
+					HrdPtr->cpb_cnt_minus1 = SequenceData.HrdParametersNAL.CpbCountMin2;
+					HrdPtr->cpb_size_scale = SequenceData.HrdParametersNAL.CpbSizeScale;
+
+					for (int Index = 0; Index < 32; Index++) {
+						HrdPtr->bit_rate_value_minus1[Index] = SequenceData.HrdParametersNAL.BitRateValueMin1[Index];
+						HrdPtr->cpb_size_value_minus1[Index] = SequenceData.HrdParametersNAL.CpbSizeValueMin1[Index];
+						HrdPtr->cbr_flag[Index] = SequenceData.HrdParametersNAL.CbrFlag[Index];
+					}
+
+					HrdPtr->initial_cpb_removal_delay_length_minus1 = SequenceData.HrdParametersNAL.InitalCpbRemovalDelayLengthMin1;
+					HrdPtr->cpb_removal_delay_length_minus1 = SequenceData.HrdParametersNAL.CpbRemovalDelayLengthMin1;
+					HrdPtr->dpb_output_delay_length_minus1 = SequenceData.HrdParametersNAL.DpbOutputDelayLengthMin1;
+					HrdPtr->time_offset_length = SequenceData.HrdParametersNAL.TimeOffsetLength;
+
+					VuiPtr->pHrdParameters = HrdPtr;
+				}
+				else if (SequenceData.VuiParameters.VclHrdParamPresentFlag) {
+					HrdPtr->bit_rate_scale = SequenceData.HrdParametersVCL.BitRateScale;
+					HrdPtr->cpb_cnt_minus1 = SequenceData.HrdParametersVCL.CpbCountMin2;
+					HrdPtr->cpb_size_scale = SequenceData.HrdParametersVCL.CpbSizeScale;
+
+					for (int Index = 0; Index < 32; Index++) {
+						HrdPtr->bit_rate_value_minus1[Index] = SequenceData.HrdParametersVCL.BitRateValueMin1[Index];
+						HrdPtr->cpb_size_value_minus1[Index] = SequenceData.HrdParametersVCL.CpbSizeValueMin1[Index];
+						HrdPtr->cbr_flag[Index] = SequenceData.HrdParametersVCL.CbrFlag[Index];
+					}
+
+					HrdPtr->initial_cpb_removal_delay_length_minus1 = SequenceData.HrdParametersVCL.InitalCpbRemovalDelayLengthMin1;
+					HrdPtr->cpb_removal_delay_length_minus1 = SequenceData.HrdParametersVCL.CpbRemovalDelayLengthMin1;
+					HrdPtr->dpb_output_delay_length_minus1 = SequenceData.HrdParametersVCL.DpbOutputDelayLengthMin1;
+					HrdPtr->time_offset_length = SequenceData.HrdParametersVCL.TimeOffsetLength;
+
+					VuiPtr->pHrdParameters = HrdPtr;
+				}
+			}
+			else {
+				VuiPtr->pHrdParameters = nullptr;
+			}
+			if (VuiPtr->flags.overscan_info_present_flag) {
+				VuiPtr->flags.overscan_appropriate_flag = SequenceData.VuiParameters.OverscanAppropriateFlag;
+			}
+			if (VuiPtr->flags.timing_info_present_flag) {
+				VuiPtr->flags.fixed_frame_rate_flag = SequenceData.VuiParameters.FixedFrameRateFlag;
+				VuiPtr->num_units_in_tick = SequenceData.VuiParameters.NumUnitsInTick;
+				VuiPtr->time_scale = SequenceData.VuiParameters.TimeScale;
+			}
+			if (VuiPtr->flags.video_signal_type_present_flag) {
+				VuiPtr->flags.color_description_present_flag = SequenceData.VuiParameters.ColorDescriptionPresentFlag;
+				VuiPtr->flags.video_full_range_flag = SequenceData.VuiParameters.VideoFullRangeFlag;
+				VuiPtr->video_format = SequenceData.VuiParameters.VideoFormat;
+
+				if (VuiPtr->flags.color_description_present_flag) {
+					VuiPtr->colour_primaries = SequenceData.VuiParameters.ColorPrimariers;
+					VuiPtr->matrix_coefficients = SequenceData.VuiParameters.MatrixCoefficiesnt;
+					VuiPtr->transfer_characteristics = SequenceData.VuiParameters.TransferCharacteristics;
+				
+				}
+			}
+		}
+		if (SequenceData.NumRefFramesInPicOrdCountCycle > 0) {
+			OffsetForRefFramePtr = new int32_t[SequenceData.NumRefFramesInPicOrdCountCycle];
+			for (int Frame = 0; Frame < SequenceData.NumRefFramesInPicOrdCountCycle; Frame++) {
+				OffsetForRefFramePtr[Frame] = SequenceData.OffsetRefFrame[Frame];
+			}
+		}
+
+		memset(&SequenceSet, 0, sizeof(SequenceSet));
+
+		SequenceSet.bit_depth_chroma_minus8 = SequenceData.BitDepthChromaMin8;
+		SequenceSet.bit_depth_luma_minus8 = SequenceData.BitDepthLumaMin8;
+		SequenceSet.chroma_format_idc = static_cast<StdVideoH264ChromaFormatIdc>(SequenceData.ChromaFormatIDC);
+
+		SequenceSet.flags.constraint_set0_flag = SequenceData.ConstraintSetFlags[0];
+		SequenceSet.flags.constraint_set1_flag = SequenceData.ConstraintSetFlags[1];
+		SequenceSet.flags.constraint_set2_flag = SequenceData.ConstraintSetFlags[2];
+		SequenceSet.flags.constraint_set3_flag = SequenceData.ConstraintSetFlags[3];
+		SequenceSet.flags.constraint_set4_flag = SequenceData.ConstraintSetFlags[4];
+		SequenceSet.flags.constraint_set5_flag = SequenceData.ConstraintSetFlags[5];
+		SequenceSet.flags.delta_pic_order_always_zero_flag = SequenceData.DeltaPicOrdAlwaysZeroFlag;
+		SequenceSet.flags.direct_8x8_inference_flag = SequenceData.Direct8x8InferenceFlat;
+		SequenceSet.flags.frame_cropping_flag = SequenceData.FrameCroppingFlag;
+		SequenceSet.flags.frame_mbs_only_flag = SequenceData.FrameMbsOnlyFlag;
+		SequenceSet.flags.gaps_in_frame_num_value_allowed_flag = SequenceData.GapsInFrameNumAllowedFlag;
+		SequenceSet.flags.mb_adaptive_frame_field_flag = SequenceData.MbAdaptiveFrameFieldFlag;
+		SequenceSet.flags.qpprime_y_zero_transform_bypass_flag = SequenceData.QuantParamPrimeZeroTransYBypassflag;
+		SequenceSet.flags.separate_colour_plane_flag = SequenceData.SeperateColorPlaneFlag;
+		SequenceSet.flags.seq_scaling_matrix_present_flag = SequenceData.SeqScalingPresentFlags[0];
+		SequenceSet.flags.vui_parameters_present_flag = SequenceData.VuiParamsPresentFlag;
+
+		SequenceSet.frame_crop_bottom_offset = SequenceData.FrameCropOffsets[3];
+		SequenceSet.frame_crop_left_offset = SequenceData.FrameCropOffsets[0];
+		SequenceSet.frame_crop_right_offset = SequenceData.FrameCropOffsets[1];
+		SequenceSet.frame_crop_top_offset = SequenceData.FrameCropOffsets[2];
+		SequenceSet.level_idc = static_cast<StdVideoH264LevelIdc>(SequenceData.LevelIDC);
+		SequenceSet.log2_max_frame_num_minus4 = SequenceData.Log2MaxFrameNumMin4;
+		SequenceSet.log2_max_pic_order_cnt_lsb_minus4 = SequenceData.Log2MaxPicOrdCountLsbMin4;
+		SequenceSet.max_num_ref_frames = SequenceData.MaxNumRefFrames;
+		SequenceSet.num_ref_frames_in_pic_order_cnt_cycle = SequenceData.NumRefFramesInPicOrdCountCycle;
+		SequenceSet.offset_for_non_ref_pic = SequenceData.OffsetNonRefPic;
+		SequenceSet.offset_for_top_to_bottom_field = SequenceData.OffsetTopBottomField;
+		SequenceSet.pic_height_in_map_units_minus1 = SequenceData.PicHeightInMapMin1;
+		SequenceSet.pic_order_cnt_type = static_cast<StdVideoH264PocType>(SequenceData.PicOrderCountType);
+		SequenceSet.pic_width_in_mbs_minus1 = SequenceData.PicWidthInMbsMin1;
+		SequenceSet.pOffsetForRefFrame = OffsetForRefFramePtr;
+		SequenceSet.profile_idc = static_cast<StdVideoH264ProfileIdc>(SequenceData.ProfileIDC);
+		SequenceSet.pScalingLists = ScaleListPtr;
+		SequenceSet.pSequenceParameterSetVui = VuiPtr;
+		SequenceSet.reserved1 = SequenceData.ConstraintSetFlags[6];
+		SequenceSet.reserved2 = SequenceData.ConstraintSetFlags[7];
+		SequenceSet.seq_parameter_set_id = SequenceData.SeqParamSetID;
+
+		SequenceMap[SequenceSet.seq_parameter_set_id] = SequenceSet;
+
+		return true;
+	}
