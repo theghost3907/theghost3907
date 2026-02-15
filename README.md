@@ -1,6 +1,25 @@
 ## Quick Note
 I used to have a lot more activity, but when I switched my email(Sep/2/2025) most contributions got whiped from profile history.  
-You can find more information on what I've done [HERE](https://www.youtube.com/playlist?list=PL4Csq4bTd7BK2p6loLS_vJrAR73iMklcA). This is a Youtube playlist that containing a good chunk of my projects since Mar/01/2024, where I first started to make video documentations. 
+You can find more information on what I've done Below. 
+
+## Dev Accounts
+These are channels and Youtube playlists that containing a good chunk of my projects since Mar/01/2024, where I first started to make video documentations
+I have multiple accounts where i post devlogs on. My most common are:
+Youtube [Theghost3907](https://www.youtube.com/@Theghost39077) With a Devlog [PLAYLIST](https://www.youtube.com/playlist?list=PL4Csq4bTd7BK2p6loLS_vJrAR73iMklcA).
+  Older, is more focusted on c++ projects outside of Unreal Engine. Does trace back to some unreal projects but the focus has shifted.
+  From Most Recent To Oldest you will see:
+    Necro Civ - custom C++ engine and game development.
+    Night Hunt - Some Unreal Engine Smart Object and EQS Work.
+    Skeletons Uprising - Unreal Engine Wave Based Multiplayer FPS with Zombie like AI.
+    
+Youtube [AnotherRandomDev](https://www.youtube.com/@AnotherRandomDev) With a Devlog [PLAYLIST](https://www.youtube.com/playlist?list=PL9_QdAyJz6Q9dRnhehB7kCnRufr5ckMcd)
+  Newer, Is more focused on Unreal Engine.
+  From Most Recent To Oldest you will see:
+    PFCS(Plant Factory Creator Simulator) - Current Development on Project in Unreal Engine Where you Play As a Biologist.
+    
+KoFi [theghost3907](https://ko-fi.com/theghost3907)
+  Most Active, More Focused on General Development Updates Opposed to formated devlogs.
+
 
 ## About Me/History
 I always liked the thought of videogame development growing up but I didn't start until 2019. Early 2019 is when I first got started with the programming side of things, with Roblox's dialect of Lua(Called "Luau"). After a couple months of using Official Roblox Scripting tutorials, I started to teach myself Blender by making my own models and basic color textures. Even though the Roblox Scripting tutorials are my not preferred way of learning, they provided you different maps that had issues and then teach you how to solve said issues, they are by far some of the best official resources I have used with exception of the large variance of video instructor quality.  
