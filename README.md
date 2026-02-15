@@ -6,19 +6,21 @@ You can find more information on what I've done Below.
 These are channels and Youtube playlists that containing a good chunk of my projects since Mar/01/2024, where I first started to make video documentations
 I have multiple accounts where i post devlogs on. My most common are:
 
-Youtube [Theghost3907](https://www.youtube.com/@Theghost39077) With a Devlog [PLAYLIST](https://www.youtube.com/playlist?list=PL4Csq4bTd7BK2p6loLS_vJrAR73iMklcA).
-  Older, is more focusted on c++ projects outside of Unreal Engine. Does trace back to some unreal projects but the focus has shifted.
-  From Most Recent To Oldest you will see:
-    Necro Civ - custom C++ engine and game development.
-    Night Hunt - Some Unreal Engine Smart Object and EQS Work.
-    Skeletons Uprising - Unreal Engine Wave Based Multiplayer FPS with Zombie like AI.
+Youtube [Theghost3907](https://www.youtube.com/@Theghost39077) With a Devlog [PLAYLIST](https://www.youtube.com/playlist?list=PL4Csq4bTd7BK2p6loLS_vJrAR73iMklcA)  
+Older, is more focusted on c++ projects outside of Unreal Engine. Does trace back to some unreal projects but the focus has shifted.
+
+From Most Recent To Oldest you will see:
+* Necro Civ - custom C++ engine and game development.  
+* Night Hunt - Some Unreal Engine Smart Object and EQS Work.  
+* Skeletons Uprising - Unreal Engine Wave Based Multiplayer FPS with Zombie like AI.  
     
-Youtube [AnotherRandomDev](https://www.youtube.com/@AnotherRandomDev) With a Devlog [PLAYLIST](https://www.youtube.com/playlist?list=PL9_QdAyJz6Q9dRnhehB7kCnRufr5ckMcd)
-  Newer, Is more focused on Unreal Engine.
-  From Most Recent To Oldest you will see:
-    PFCS(Plant Factory Creator Simulator) - Current Development on Project in Unreal Engine Where you Play As a Biologist.
+Youtube [AnotherRandomDev](https://www.youtube.com/@AnotherRandomDev) With a Devlog [PLAYLIST](https://www.youtube.com/playlist?list=PL9_QdAyJz6Q9dRnhehB7kCnRufr5ckMcd)  
+Newer, Is more focused on Unreal Engine.
+  
+From Most Recent To Oldest you will see:
+*  PFCS(Plant Factory Creator Simulator) - Current Development on Project in Unreal Engine Where you Play As a Biologist.
     
-KoFi [theghost3907](https://ko-fi.com/theghost3907)
+KoFi [theghost3907](https://ko-fi.com/theghost3907)  
   Most Active, More Focused on General Development Updates Opposed to formated devlogs.
 
 
